@@ -110,6 +110,20 @@ Key bindings:
 - `M-p` and `M-n` cycle prompt history while point is in the active prompt.
 - `TAB` and `S-TAB` move between clickable buttons and file links.
 
+### Global session overview
+
+`M-x codex-ide-status-global` shows stored Codex threads from every working
+directory in one status buffer.  Each row keeps the technical Codex status
+separate and displays the thread's working directory.  Press `RET` on a row to
+open or resume it in that saved directory.  The existing
+`M-x codex-ide-status` command remains scoped to the current project.
+
+Use `M-x codex-ide-resume-global` for the corresponding completion-based
+picker.  Both commands are also available from `codex-ide-menu` as “Manage all
+sessions” and “Resume from all projects”.  Thread lists automatically retrieve
+all app-server pages.  Resume errors, including an active-writer conflict, are
+reported without taking over or bypassing the existing writer.
+
 ### Session diff buffer
 
 Codex IDE can show a canonical diff buffer for each session. Open it with

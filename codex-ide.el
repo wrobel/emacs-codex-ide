@@ -283,10 +283,11 @@ When nil, inline diffs never start folded."
 
 ;;;###autoload
 (defcustom codex-ide-thread-list-default-limit 100
-  "Default number of stored threads to request when listing threads.
+  "Default page size when requesting stored threads.
 
 This value is used when protocol callers do not pass an explicit
-thread-list limit."
+thread-list limit.  Thread listings follow `nextCursor' until every page has
+been retrieved."
   :type 'integer
   :group 'codex-ide)
 

@@ -56,6 +56,16 @@
   (let ((thread-id (alist-get 'id thread)))
     (substring thread-id 0 (min 8 (length thread-id)))))
 
+(defun codex-ide--thread-directory (thread &optional fallback)
+  "Return THREAD's normalized working directory, or FALLBACK."
+  (let ((directory (alist-get 'cwd thread)))
+    (when (or (and (stringp directory) (not (string-empty-p directory)))
+              fallback)
+      (codex-ide--normalize-directory
+       (if (and (stringp directory) (not (string-empty-p directory)))
+           directory
+         fallback)))))
+
 (defun codex-ide--thread-choice-candidates (threads)
   "Return completion candidates alist for THREADS."
   (let ((counts (make-hash-table :test #'equal)))
@@ -80,15 +90,22 @@
                thread)))
      threads)))
 
-(defun codex-ide--thread-choice-affixation (candidates choices)
-  "Return affixation data for CANDIDATES using CHOICES."
+(defun codex-ide--thread-choice-affixation (candidates choices &optional show-directory)
+  "Return affixation data for CANDIDATES using CHOICES.
+When SHOW-DIRECTORY is non-nil, include each thread's working directory."
   (mapcar
    (lambda (candidate)
      (let ((thread (cdr (assoc candidate choices))))
        (list candidate
              (format "%s " (codex-ide--format-thread-updated-at
                             (alist-get 'createdAt thread)))
-             (format " [%s]" (codex-ide--thread-choice-short-id thread)))))
+             (format " [%s]%s"
+                     (codex-ide--thread-choice-short-id thread)
+                     (if show-directory
+                         (format "  %s"
+                                 (abbreviate-file-name
+                                  (or (codex-ide--thread-directory thread) "?")))
+                       "")))))
    candidates))
 
 (defun codex-ide--thread-list-data (&optional session omit-thread-id)
@@ -98,6 +115,14 @@ When OMIT-THREAD-ID is non-nil, exclude that thread from the result."
    (lambda (thread)
      (equal (alist-get 'id thread) omit-thread-id))
    (codex-ide--list-threads session)))
+
+(defun codex-ide--global-thread-list-data (&optional session omit-thread-id)
+  "Return threads from every working directory using SESSION.
+When OMIT-THREAD-ID is non-nil, exclude that thread from the result."
+  (seq-remove
+   (lambda (thread)
+     (equal (alist-get 'id thread) omit-thread-id))
+   (codex-ide--list-threads session :global t)))
 
 (defun codex-ide--pick-thread (&optional session omit-thread-id)
   "Prompt to select a thread for the current working directory using SESSION."
@@ -120,6 +145,28 @@ When OMIT-THREAD-ID is non-nil, exclude that thread from the result."
                     "No Codex threads found")
                   (abbreviate-file-name working-dir)))
     (cdr (assoc (completing-read "Resume Codex thread: " choices nil t)
+                choices))))
+
+(defun codex-ide--pick-thread-global (&optional session omit-thread-id)
+  "Prompt to select a thread from every working directory using SESSION."
+  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
+  (unless session
+    (error "No Codex session available"))
+  (let* ((threads (codex-ide--global-thread-list-data session omit-thread-id))
+         (choices (codex-ide--thread-choice-candidates threads))
+         (completion-extra-properties
+          `(:affixation-function
+            ,(lambda (candidates)
+               (codex-ide--thread-choice-affixation candidates choices t))
+            :display-sort-function identity
+            :cycle-sort-function identity)))
+    (unless choices
+      (user-error "%s"
+                  (if omit-thread-id
+                      "No other Codex threads found"
+                    "No Codex threads found")))
+    (cdr (assoc (completing-read "Resume Codex thread (all projects): "
+                                 choices nil t)
                 choices))))
 
 (defun codex-ide--latest-thread (&optional session)

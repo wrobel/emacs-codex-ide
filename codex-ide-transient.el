@@ -14,6 +14,7 @@
 (declare-function codex-ide-mcp-bridge-disable "codex-ide-mcp-bridge" ())
 (declare-function codex-ide "codex-ide" ())
 (declare-function codex-ide-continue "codex-ide" ())
+(declare-function codex-ide-resume-global "codex-ide" ())
 (declare-function codex-ide-prompt "codex-ide" ())
 (declare-function codex-ide-queue "codex-ide" ())
 (declare-function codex-ide-reset-current-session "codex-ide" ())
@@ -39,6 +40,8 @@
   "Show a tabulated list of live Codex session buffers." t)
 (autoload 'codex-ide-status "codex-ide-status-mode"
   "Show the Codex status buffer for the current project." t)
+(autoload 'codex-ide-status-global "codex-ide-status-mode"
+  "Show the Codex status buffer across all projects." t)
 (autoload 'codex-ide-session-diff-open "codex-ide-diff-view"
   "Open or reuse the canonical session diff buffer for the current project." t)
 
@@ -465,6 +468,8 @@
 			    :if codex-ide--in-session-buffer-p)]
 			  ["Manage"
 			   ("m" "Manage sessions" codex-ide-status)
+			   ("a" "Manage all sessions" codex-ide-status-global)
+			   ("R" "Resume from all projects" codex-ide-resume-global)
 			   ("l" "Live session buffers" codex-ide-session-buffer-list)
 			   ("D" "Session diff (live/transcript/pinned)" codex-ide-session-diff-open)]
 			  ["Submenus"

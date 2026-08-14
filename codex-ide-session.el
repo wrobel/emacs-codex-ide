@@ -736,6 +736,22 @@ protocol requests such as thread listing."
   (codex-ide--start-session 'continue))
 
 ;;;###autoload
+(defun codex-ide-resume-global ()
+  "Select and resume a Codex thread from any working directory."
+  (interactive)
+  (codex-ide--prepare-session-operations)
+  (let* ((query-directory (codex-ide--normalize-directory
+                           (codex-ide--get-working-directory)))
+         (query-session
+          (codex-ide--ensure-query-session-for-thread-selection query-directory))
+         (thread (codex-ide--pick-thread-global query-session))
+         (thread-id (alist-get 'id thread))
+         (thread-directory (codex-ide--thread-directory thread)))
+    (unless thread-directory
+      (user-error "Thread %s has no working directory" thread-id))
+    (codex-ide--show-or-resume-thread thread-id thread-directory)))
+
+;;;###autoload
 (defun codex-ide-show-cli-info ()
   "Report Codex CLI availability and version."
   (interactive)
