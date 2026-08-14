@@ -1212,6 +1212,65 @@
   (should (eq (lookup-key codex-ide-status-mode-map (kbd "K"))
               #'codex-ide-status-mode-kill-buffer-at-point)))
 
+(ert-deftest codex-ide-status-mode-binds-extension-action-command ()
+  (should (eq (lookup-key codex-ide-status-mode-map (kbd "a"))
+              #'codex-ide-status-run-action)))
+
+(ert-deftest codex-ide-status-run-action-passes-normalized-row ()
+  (let ((row '(:thread-id "thread-action"))
+        (received nil)
+        (codex-ide-status-actions nil))
+    (codex-ide-register-status-action
+     "Open task"
+     (lambda (action-row) (setq received action-row)))
+    (cl-letf (((symbol-function 'codex-ide-status-row-at-point)
+               (lambda () row))
+              ((symbol-function 'completing-read)
+               (lambda (_prompt _choices &rest _args) "Open task")))
+      (codex-ide-status-run-action)
+      (should (eq received row)))))
+
+(ert-deftest codex-ide-status-thread-heading-renders-extension-annotation ()
+  (with-temp-buffer
+    (codex-ide-status-mode)
+    (setq-local codex-ide-status-mode--global-p t)
+    (let* ((thread '((id . "thread-annotation")
+                     (name . "Annotated task")
+                     (cwd . "/tmp/annotation")
+                     (createdAt . 10)
+                     (updatedAt . 20)))
+           (codex-ide-status-annotation-functions
+            (list (lambda (row)
+                    (when (equal (plist-get row :thread-id) "thread-annotation")
+                      "WIP")))))
+      (cl-letf (((symbol-function 'codex-ide-status-mode--thread-session)
+                 (lambda (&rest _args) nil))
+                ((symbol-function 'codex-ide--session-for-thread-id)
+                 (lambda (&rest _args) nil)))
+        (codex-ide-status-mode--insert-thread-section
+         thread
+         "/tmp/query"
+         '(:status-width 6 :updated-width 4)))
+      (should (string-match-p "Annotated task  WIP" (buffer-string))))))
+
+(ert-deftest codex-ide-status-notify-annotations-refreshes-live-status-buffers ()
+  (let* ((buffer (generate-new-buffer " *codex-status-api-refresh*"))
+         (refresh-count 0)
+         (hook-count 0)
+         (codex-ide-status-annotations-changed-hook
+          (list (lambda () (setq hook-count (1+ hook-count))))))
+    (unwind-protect
+        (progn
+          (with-current-buffer buffer
+            (codex-ide-status-mode))
+          (cl-letf (((symbol-function 'codex-ide-status-mode-refresh)
+                     (lambda (&optional _ignore-auto _noconfirm)
+                       (setq refresh-count (1+ refresh-count)))))
+            (codex-ide-status-notify-annotations-changed))
+          (should (= hook-count 1))
+          (should (= refresh-count 1)))
+      (kill-buffer buffer))))
+
 (ert-deftest codex-ide-status-display-session-at-point-other-window-binds-pop-up-action ()
   (let ((captured-action nil)
         (section 'buffer-section))

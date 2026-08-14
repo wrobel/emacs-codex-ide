@@ -14,6 +14,7 @@
 (require 'codex-ide-renderer)
 (require 'codex-ide-section)
 (require 'codex-ide-session-list)
+(require 'codex-ide-status-api)
 
 (defvar codex-ide-display-buffer-pop-up-action)
 (defvar codex-ide--display-buffer-other-window-pop-up-action)
@@ -95,6 +96,7 @@ while 1 would fully replace the background with the foreground color."
 (define-key codex-ide-status-mode-map (kbd "+") #'codex-ide)
 (define-key codex-ide-status-mode-map (kbd "D") #'codex-ide-status-mode-delete-thing-at-point)
 (define-key codex-ide-status-mode-map (kbd "K") #'codex-ide-status-mode-kill-buffer-at-point)
+(define-key codex-ide-status-mode-map (kbd "a") #'codex-ide-status-run-action)
 (define-key codex-ide-status-mode-map (kbd "l") #'codex-ide-status-mode-refresh)
 (define-key codex-ide-status-mode-map
             (kbd "RET")
@@ -306,6 +308,33 @@ Only child `buffer' and `thread' sections support visit and delete actions."
        (unless directory
          (user-error "Thread %s has no working directory" thread-id))
        (codex-ide--show-or-resume-thread thread-id directory)))))
+
+(defun codex-ide-status-row-at-point ()
+  "Return the normalized public status row at point."
+  (let ((section (codex-ide-status-mode--actionable-section-at-point)))
+    (pcase (codex-ide-section-type section)
+      ('thread
+       (codex-ide-thread-row
+        (codex-ide-section-value section)
+        (unless codex-ide-status-mode--global-p
+          codex-ide-status-mode--directory)))
+      ('buffer
+       (codex-ide-session-row (codex-ide-section-value section))))))
+
+;;;###autoload
+(defun codex-ide-status-run-action ()
+  "Select and run an extension action for the status row at point."
+  (interactive)
+  (let* ((row (codex-ide-status-row-at-point))
+         (actions (codex-ide-status-available-actions row))
+         (choices (mapcar (lambda (action)
+                            (cons (plist-get action :name) action))
+                          actions)))
+    (unless choices
+      (user-error "No extension actions are available for this Codex session"))
+    (let* ((name (completing-read "Codex session action: " choices nil t))
+           (action (cdr (assoc name choices))))
+      (funcall (plist-get action :function) row))))
 
 (defun codex-ide-status-mode--delete-buffer-session (session)
   "Delete SESSION's live buffer with list-mode-consistent confirmation."
@@ -1084,6 +1113,10 @@ Return nil when there is no agent reply."
          (updated-width (plist-get layout :updated-width))
          (preview (codex-ide-status-mode--preview-line
                    (or first-prompt raw-preview)))
+         (row (codex-ide-thread-row
+               thread
+               (unless codex-ide-status-mode--global-p directory)))
+         (annotation (codex-ide-status-annotation-text row))
          (title (concat
                  (codex-ide-status-mode--format-heading-status
                   (codex-ide-status-mode--pad-heading-part label status-width)
@@ -1098,7 +1131,10 @@ Return nil when there is no agent reply."
                                   'face 'font-lock-string-face)
                       "  ")
                    "")
-                 (codex-ide-status-mode--format-heading-preview preview))))
+                 (codex-ide-status-mode--format-heading-preview preview)
+                 (if (string-empty-p annotation)
+                     ""
+                   (concat "  " annotation)))))
     (codex-ide-section-insert
      'thread thread title
      (lambda (_section)

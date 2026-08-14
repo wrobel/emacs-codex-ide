@@ -124,6 +124,27 @@ sessions” and “Resume from all projects”.  Thread lists automatically retr
 all app-server pages.  Resume errors, including an active-writer conflict, are
 reported without taking over or bypassing the existing writer.
 
+### Status extension API
+
+Optional integrations can extend the status view without depending on its
+internal section representation:
+
+- `codex-ide-list-thread-rows` returns normalized plists with thread ID, title,
+  directory, timestamps, technical status, raw thread metadata, and any linked
+  live session.
+- `codex-ide-status-annotation-functions` adds display-only text to status
+  headings.  Each function receives one normalized row.
+- `codex-ide-register-status-action` adds a contextual action.  In a status
+  buffer, press `a` to select an action available for the row at point.
+- `codex-ide-status-notify-annotations-changed` refreshes live status buffers
+  after an external data source changes.
+- `codex-ide-open-thread` opens a thread by ID, resolving its saved working
+  directory from the global inventory when necessary.
+
+These hooks are deliberately project-management-neutral.  An Org integration,
+for example, can provide workflow annotations and navigation actions without
+making Org a dependency of Codex IDE.
+
 ### Session diff buffer
 
 Codex IDE can show a canonical diff buffer for each session. Open it with
