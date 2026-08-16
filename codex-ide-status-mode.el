@@ -45,6 +45,15 @@ while 1 would fully replace the background with the foreground color."
   :type 'number
   :group 'codex-ide)
 
+(defcustom codex-ide-status-mode-before-title-min-width 10
+  "Minimum width reserved for external before-title status content.
+
+The column is present only when at least one visible row has before-title
+content.  It expands to fit longer content so integrations are never silently
+truncated."
+  :type 'natnum
+  :group 'codex-ide)
+
 (defface codex-ide-status-expanded-content-face
   '((t :inherit default :background unspecified :extend t))
   "Face used for expanded buffer and thread content in status buffers."
@@ -737,18 +746,30 @@ The plist contains `:text', `:start', and `:end'."
 (defun codex-ide-status-mode--heading-layout (threads directory)
   "Return heading layout widths for THREADS in DIRECTORY."
   (let ((status-width 0)
-        (updated-width 0))
+        (updated-width 0)
+        (before-title-width 0)
+        (before-title-by-thread (make-hash-table :test #'equal)))
     (dolist (thread threads)
-      (let* ((session (codex-ide-status-mode--thread-session thread directory))
-             (status (if session
-                         (codex-ide-session-status session)
-                       "stored"))
+      (let* ((row (codex-ide-thread-row
+                   thread
+                   (unless codex-ide-status-mode--global-p directory)
+                   codex-ide-status-mode--archived-p))
+             (status (plist-get row :technical-status))
              (label (codex-ide-renderer-status-label status))
-             (updated (or (codex-ide-human-time-ago (alist-get 'updatedAt thread)) "")))
+             (updated (or (codex-ide-human-time-ago (alist-get 'updatedAt thread)) ""))
+             (before-title (codex-ide-status-before-title-text row)))
+        (puthash (alist-get 'id thread) before-title before-title-by-thread)
         (setq status-width (max status-width (string-width label))
-              updated-width (max updated-width (string-width updated)))))
+              updated-width (max updated-width (string-width updated)))
+        (unless (string-empty-p before-title)
+          (setq before-title-width
+                (max codex-ide-status-mode-before-title-min-width
+                     before-title-width
+                     (string-width before-title))))))
     (list :status-width status-width
-          :updated-width updated-width)))
+          :updated-width updated-width
+          :before-title-width before-title-width
+          :before-title-by-thread before-title-by-thread)))
 
 (defun codex-ide-status-mode--thread-updated-at-time (thread)
   "Return THREAD's `updatedAt' value as an Emacs time."
@@ -1137,13 +1158,18 @@ Return nil when there is no agent reply."
          (updated-text (or (codex-ide-human-time-ago (alist-get 'updatedAt thread)) ""))
          (status-width (plist-get layout :status-width))
          (updated-width (plist-get layout :updated-width))
+         (before-title-width (or (plist-get layout :before-title-width) 0))
          (preview (codex-ide-status-mode--preview-line
                    (or first-prompt raw-preview)))
          (row (codex-ide-thread-row
                thread
                (unless codex-ide-status-mode--global-p directory)
                codex-ide-status-mode--archived-p))
-         (before-title (codex-ide-status-before-title-text row))
+         (before-title-cache (plist-get layout :before-title-by-thread))
+         (before-title
+          (if before-title-cache
+              (or (gethash thread-id before-title-cache) "")
+            (codex-ide-status-before-title-text row)))
          (after-title (codex-ide-status-after-title-text row))
          (title (concat
                  (codex-ide-status-mode--format-heading-status
@@ -1159,9 +1185,14 @@ Return nil when there is no agent reply."
                                   'face 'font-lock-string-face)
                       "  ")
                    "")
-                 (if (string-empty-p before-title)
-                     ""
+                 (cond
+                  ((> before-title-width 0)
+                   (concat (codex-ide-status-mode--pad-heading-part
+                            before-title before-title-width)
+                           "  "))
+                  ((not (string-empty-p before-title))
                    (concat before-title "  "))
+                  (t ""))
                  (codex-ide-status-mode--format-heading-preview preview)
                  (if (string-empty-p after-title)
                      ""

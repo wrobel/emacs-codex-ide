@@ -150,6 +150,10 @@ internal section representation:
   title.  Each function receives one normalized row.  The older
   `codex-ide-status-annotation-functions` remains supported as an after-title
   provider.
+
+When at least one visible row supplies before-title content, the status view
+renders it as an aligned column.  Its minimum width is controlled by
+`codex-ide-status-mode-before-title-min-width` and expands for longer values.
 - `codex-ide-register-status-action` adds a contextual action.  In a status
   buffer, press `a` to select an action available for the row at point.
 - `codex-ide-status-notify-annotations-changed` refreshes live status buffers

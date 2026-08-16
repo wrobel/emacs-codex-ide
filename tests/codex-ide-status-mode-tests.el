@@ -1277,6 +1277,35 @@
       (should (string-match-p "WIP  Build dashboard  backend"
                               (buffer-string))))))
 
+(ert-deftest codex-ide-status-before-title-content-forms-aligned-column ()
+  (with-temp-buffer
+    (codex-ide-status-mode)
+    (let* ((threads '(((id . "linked") (name . "Linked title")
+                       (createdAt . 10) (updatedAt . 20))
+                      ((id . "missing") (name . "Missing title")
+                       (createdAt . 10) (updatedAt . 20))))
+           (codex-ide-status-mode-before-title-min-width 10)
+           (codex-ide-status-before-title-functions
+            (list (lambda (row)
+                    (if (equal (plist-get row :thread-id) "linked")
+                        "WIP"
+                      "UNLINKED")))))
+      (cl-letf (((symbol-function 'codex-ide-status-mode--thread-session)
+                 (lambda (&rest _args) nil))
+                ((symbol-function 'codex-ide--session-for-thread-id)
+                 (lambda (&rest _args) nil)))
+        (let ((layout (codex-ide-status-mode--heading-layout
+                       threads "/tmp/query")))
+          (dolist (thread threads)
+            (codex-ide-status-mode--insert-thread-section
+             thread "/tmp/query" layout))))
+      (goto-char (point-min))
+      (search-forward "Linked title")
+      (let ((linked-column (- (current-column) (string-width "Linked title"))))
+        (search-forward "Missing title")
+        (should (= linked-column
+                   (- (current-column) (string-width "Missing title"))))))))
+
 (ert-deftest codex-ide-status-archived-renders-archived-project-inventory ()
   (let* ((root-dir (codex-ide-test--make-temp-project))
          (project-dir (expand-file-name "archive" root-dir))
