@@ -108,21 +108,22 @@ When SHOW-DIRECTORY is non-nil, include each thread's working directory."
                        "")))))
    candidates))
 
-(defun codex-ide--thread-list-data (&optional session omit-thread-id)
+(cl-defun codex-ide--thread-list-data (&optional session omit-thread-id &key archived)
   "Return thread list data using SESSION.
 When OMIT-THREAD-ID is non-nil, exclude that thread from the result."
   (seq-remove
    (lambda (thread)
      (equal (alist-get 'id thread) omit-thread-id))
-   (codex-ide--list-threads session)))
+   (codex-ide--list-threads session :archived archived)))
 
-(defun codex-ide--global-thread-list-data (&optional session omit-thread-id)
+(cl-defun codex-ide--global-thread-list-data (&optional session omit-thread-id
+                                                        &key archived)
   "Return threads from every working directory using SESSION.
 When OMIT-THREAD-ID is non-nil, exclude that thread from the result."
   (seq-remove
    (lambda (thread)
      (equal (alist-get 'id thread) omit-thread-id))
-   (codex-ide--list-threads session :global t)))
+   (codex-ide--list-threads session :global t :archived archived)))
 
 (defun codex-ide--pick-thread (&optional session omit-thread-id)
   "Prompt to select a thread for the current working directory using SESSION."

@@ -29,7 +29,19 @@
         (should (= (plist-get row :created-at) 10))
         (should (= (plist-get row :updated-at) 20))
         (should (equal (plist-get row :technical-status) "running"))
+        (should-not (plist-get row :archived))
         (should (eq (plist-get row :session) session))))))
+
+(ert-deftest codex-ide-thread-row-marks-archived-inventory ()
+  (cl-letf (((symbol-function 'codex-ide--session-for-thread-id)
+             (lambda (&rest _args) (error "Archived rows must not attach sessions"))))
+    (let ((row (codex-ide-thread-row
+                '((id . "archived-thread") (name . "Archived"))
+                "/tmp/archive"
+                t)))
+      (should (plist-get row :archived))
+      (should (equal (plist-get row :technical-status) "archived"))
+      (should-not (plist-get row :session)))))
 
 (ert-deftest codex-ide-list-thread-rows-global-uses-global-inventory ()
   (let ((global-called nil)
@@ -95,6 +107,42 @@
                (lambda (_row) nil))))
     (should (equal (codex-ide-status-annotation-text '(:thread-id "thread"))
                    "TODO  linked  review"))))
+
+(ert-deftest codex-ide-status-title-providers-are-independent-and-legacy-compatible ()
+  (let ((codex-ide-status-before-title-functions
+         (list (lambda (_row) '("WIP" "backend"))))
+        (codex-ide-status-after-title-functions
+         (list (lambda (_row) "large")))
+        (codex-ide-status-annotation-functions
+         (list (lambda (_row) "legacy"))))
+    (should (equal (codex-ide-status-before-title-text '(:thread-id "thread"))
+                   "WIP  backend"))
+    (should (equal (codex-ide-status-after-title-text '(:thread-id "thread"))
+                   "large  legacy"))
+    (should (equal (codex-ide-status-annotation-text '(:thread-id "thread"))
+                   "large  legacy"))))
+
+(ert-deftest codex-ide-public-archive-operations-refresh-inventory ()
+  (let ((session 'query-session)
+        (notifications 0)
+        calls)
+    (cl-letf (((symbol-function 'codex-ide--prepare-session-operations) #'ignore)
+              ((symbol-function 'codex-ide-status--session-for-directory)
+               (lambda (_directory supplied-session) supplied-session))
+              ((symbol-function 'codex-ide--archive-thread)
+               (lambda (thread-id supplied-session)
+                 (push (list 'archive thread-id supplied-session) calls)))
+              ((symbol-function 'codex-ide--unarchive-thread)
+               (lambda (thread-id supplied-session)
+                 (push (list 'unarchive thread-id supplied-session) calls)))
+              ((symbol-function 'codex-ide-status-notify-thread-list-changed)
+               (lambda () (setq notifications (1+ notifications)))))
+      (codex-ide-archive-thread "thread-one" :session session)
+      (codex-ide-unarchive-thread "thread-one" :session session)
+      (should (equal (nreverse calls)
+                     '((archive "thread-one" query-session)
+                       (unarchive "thread-one" query-session))))
+      (should (= notifications 2)))))
 
 (provide 'codex-ide-status-api-tests)
 

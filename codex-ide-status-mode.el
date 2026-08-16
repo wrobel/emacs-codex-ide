@@ -75,6 +75,9 @@ while 1 would fully replace the background with the foreground color."
 (defvar-local codex-ide-status-mode--global-p nil
   "Non-nil when the current status buffer shows threads from all projects.")
 
+(defvar-local codex-ide-status-mode--archived-p nil
+  "Non-nil when the current status buffer shows archived threads.")
+
 (defvar-local codex-ide-status-mode--refresh-timer nil
   "Idle timer used to coalesce automatic status buffer refreshes.")
 
@@ -97,6 +100,7 @@ while 1 would fully replace the background with the foreground color."
 (define-key codex-ide-status-mode-map (kbd "D") #'codex-ide-status-mode-delete-thing-at-point)
 (define-key codex-ide-status-mode-map (kbd "K") #'codex-ide-status-mode-kill-buffer-at-point)
 (define-key codex-ide-status-mode-map (kbd "a") #'codex-ide-status-run-action)
+(define-key codex-ide-status-mode-map (kbd "A") #'codex-ide-status-toggle-archive-at-point)
 (define-key codex-ide-status-mode-map (kbd "l") #'codex-ide-status-mode-refresh)
 (define-key codex-ide-status-mode-map
             (kbd "RET")
@@ -307,6 +311,8 @@ Only child `buffer' and `thread' sections support visit and delete actions."
                          codex-ide-status-mode--directory)))
        (unless directory
          (user-error "Thread %s has no working directory" thread-id))
+       (when codex-ide-status-mode--archived-p
+         (user-error "Unarchive this thread with A before opening it"))
        (codex-ide--show-or-resume-thread thread-id directory)))))
 
 (defun codex-ide-status-row-at-point ()
@@ -317,7 +323,8 @@ Only child `buffer' and `thread' sections support visit and delete actions."
        (codex-ide-thread-row
         (codex-ide-section-value section)
         (unless codex-ide-status-mode--global-p
-          codex-ide-status-mode--directory)))
+          codex-ide-status-mode--directory)
+        codex-ide-status-mode--archived-p))
       ('buffer
        (codex-ide-session-row (codex-ide-section-value section))))))
 
@@ -335,6 +342,22 @@ Only child `buffer' and `thread' sections support visit and delete actions."
     (let* ((name (completing-read "Codex session action: " choices nil t))
            (action (cdr (assoc name choices))))
       (funcall (plist-get action :function) row))))
+
+(defun codex-ide-status-toggle-archive-at-point ()
+  "Archive or unarchive the Codex thread at point and refresh status views."
+  (interactive)
+  (let* ((row (codex-ide-status-row-at-point))
+         (thread-id (plist-get row :thread-id))
+         (directory (plist-get row :directory))
+         (archived (plist-get row :archived))
+         (verb (if archived "Unarchive" "Archive")))
+    (unless (eq (plist-get row :kind) 'thread)
+      (user-error "Only stored Codex threads can be archived"))
+    (when (y-or-n-p (format "%s Codex thread %s? " verb thread-id))
+      (if archived
+          (codex-ide-unarchive-thread thread-id :directory directory)
+        (codex-ide-archive-thread thread-id :directory directory))
+      (message "%sd Codex thread %s" verb thread-id))))
 
 (defun codex-ide-status-mode--delete-buffer-session (session)
   "Delete SESSION's live buffer with list-mode-consistent confirmation."
@@ -485,10 +508,11 @@ Only child `buffer' and `thread' sections support visit and delete actions."
 
 (defun codex-ide-status-mode--header-line (directory count)
   "Return header-line text for DIRECTORY with session COUNT."
-  (format "%s | %d %s"
+  (format "%s%s | %d %s"
           (if codex-ide-status-mode--global-p
               "All projects"
             (format "Project: %s" (codex-ide--project-name directory)))
+          (if codex-ide-status-mode--archived-p " | Archived" "")
           count
           (if (= count 1) "session" "sessions")))
 
@@ -1085,10 +1109,12 @@ Return nil when there is no agent reply."
 
 (defun codex-ide-status-mode--insert-thread-section (thread directory layout)
   "Insert a child section for THREAD in DIRECTORY using LAYOUT."
-  (let* ((session (codex-ide-status-mode--thread-session thread directory))
-         (status (if session
-                     (codex-ide-session-status session)
-                   "stored"))
+  (let* ((session (unless codex-ide-status-mode--archived-p
+                    (codex-ide-status-mode--thread-session thread directory)))
+         (status (cond
+                  (session (codex-ide-session-status session))
+                  (codex-ide-status-mode--archived-p "archived")
+                  (t "stored")))
          (label (codex-ide-renderer-status-label status))
          (thread-id (alist-get 'id thread))
          (thread-directory
@@ -1115,8 +1141,10 @@ Return nil when there is no agent reply."
                    (or first-prompt raw-preview)))
          (row (codex-ide-thread-row
                thread
-               (unless codex-ide-status-mode--global-p directory)))
-         (annotation (codex-ide-status-annotation-text row))
+               (unless codex-ide-status-mode--global-p directory)
+               codex-ide-status-mode--archived-p))
+         (before-title (codex-ide-status-before-title-text row))
+         (after-title (codex-ide-status-after-title-text row))
          (title (concat
                  (codex-ide-status-mode--format-heading-status
                   (codex-ide-status-mode--pad-heading-part label status-width)
@@ -1131,10 +1159,13 @@ Return nil when there is no agent reply."
                                   'face 'font-lock-string-face)
                       "  ")
                    "")
-                 (codex-ide-status-mode--format-heading-preview preview)
-                 (if (string-empty-p annotation)
+                 (if (string-empty-p before-title)
                      ""
-                   (concat "  " annotation)))))
+                   (concat before-title "  "))
+                 (codex-ide-status-mode--format-heading-preview preview)
+                 (if (string-empty-p after-title)
+                     ""
+                   (concat "  " after-title)))))
     (codex-ide-section-insert
      'thread thread title
      (lambda (_section)
@@ -1182,8 +1213,13 @@ When IS-REFRESH is non-nil, existing buffer content will be erased/reset."
     (setq threads
           (codex-ide-status-mode--sort-threads-by-updated
            (if codex-ide-status-mode--global-p
-               (codex-ide--global-thread-list-data query-session)
-             (codex-ide--thread-list-data query-session))))
+               (if codex-ide-status-mode--archived-p
+                   (codex-ide--global-thread-list-data
+                    query-session nil :archived t)
+                 (codex-ide--global-thread-list-data query-session))
+             (if codex-ide-status-mode--archived-p
+                 (codex-ide--thread-list-data query-session nil :archived t)
+               (codex-ide--thread-list-data query-session)))))
     (setq layout (codex-ide-status-mode--heading-layout threads directory))
     (dolist (thread threads)
       (setq index (1+ index))
@@ -1228,6 +1264,7 @@ When IS-REFRESH is non-nil, existing buffer content will be erased/reset."
       (setq-local default-directory directory)
       (setq-local codex-ide-status-mode--directory directory)
       (setq-local codex-ide-status-mode--global-p nil)
+      (setq-local codex-ide-status-mode--archived-p nil)
       (codex-ide-status-mode--render-buffer directory :is-refresh t))
     (pop-to-buffer buffer)))
 
@@ -1243,6 +1280,41 @@ When IS-REFRESH is non-nil, existing buffer content will be erased/reset."
       (setq-local default-directory directory)
       (setq-local codex-ide-status-mode--directory directory)
       (setq-local codex-ide-status-mode--global-p t)
+      (setq-local codex-ide-status-mode--archived-p nil)
+      (codex-ide-status-mode--render-buffer directory :is-refresh t))
+    (pop-to-buffer buffer)))
+
+;;;###autoload
+(defun codex-ide-status-archived ()
+  "Show archived Codex threads for the current project."
+  (interactive)
+  (let* ((directory (codex-ide--normalize-directory
+                     (codex-ide--get-working-directory)))
+         (buffer-name (format "codex-ide archived: %s"
+                              (codex-ide--project-name directory)))
+         (buffer (get-buffer-create buffer-name)))
+    (with-current-buffer buffer
+      (codex-ide-status-mode)
+      (setq-local default-directory directory)
+      (setq-local codex-ide-status-mode--directory directory)
+      (setq-local codex-ide-status-mode--global-p nil)
+      (setq-local codex-ide-status-mode--archived-p t)
+      (codex-ide-status-mode--render-buffer directory :is-refresh t))
+    (pop-to-buffer buffer)))
+
+;;;###autoload
+(defun codex-ide-status-archived-global ()
+  "Show archived Codex threads from every project."
+  (interactive)
+  (let* ((directory (codex-ide--normalize-directory
+                     (codex-ide--get-working-directory)))
+         (buffer (get-buffer-create "codex-ide archived: all projects")))
+    (with-current-buffer buffer
+      (codex-ide-status-mode)
+      (setq-local default-directory directory)
+      (setq-local codex-ide-status-mode--directory directory)
+      (setq-local codex-ide-status-mode--global-p t)
+      (setq-local codex-ide-status-mode--archived-p t)
       (codex-ide-status-mode--render-buffer directory :is-refresh t))
     (pop-to-buffer buffer)))
 

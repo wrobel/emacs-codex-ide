@@ -390,13 +390,14 @@ CALLBACK is called with RESULT and ERROR."
      ((member (alist-get 'author item) '("assistant" assistant)) 'assistant)
      (t nil))))
 
-(cl-defun codex-ide--list-threads (&optional session &key limit sort-key global)
+(cl-defun codex-ide--list-threads (&optional session &key limit sort-key global archived)
   "List threads using SESSION, following every result page.
 
 When LIMIT is nil, use `codex-ide-thread-list-default-limit'.  When
 SORT-KEY is nil, sort by `updated_at'.  LIMIT is the page size, not a cap on
 the returned threads.  When GLOBAL is non-nil, omit `cwd' so the app server
-returns threads from every working directory."
+returns threads from every working directory.  When ARCHIVED is non-nil,
+request archived threads instead of the active inventory."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
   (unless session
     (error "No Codex session available"))
@@ -414,12 +415,33 @@ returns threads from every working directory."
                  "thread/list"
                  (delq nil
                        `(,@(unless global `((cwd . ,working-dir)))
+                         ,@(when archived `((archived . t)))
                          (limit . ,limit)
                          (sortKey . ,sort-key)
                          ,@(when cursor `((cursor . ,cursor)))))))
           (setq threads (nconc threads (append (alist-get 'data page) nil)))
           (setq cursor (alist-get 'nextCursor page))))
     threads))
+
+(defun codex-ide--archive-thread (thread-id &optional session)
+  "Archive THREAD-ID using SESSION and return the app-server result."
+  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
+  (unless session
+    (error "No Codex session available"))
+  (codex-ide--request-sync
+   session
+   "thread/archive"
+   `((threadId . ,thread-id))))
+
+(defun codex-ide--unarchive-thread (thread-id &optional session)
+  "Unarchive THREAD-ID using SESSION and return the app-server result."
+  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
+  (unless session
+    (error "No Codex session available"))
+  (codex-ide--request-sync
+   session
+   "thread/unarchive"
+   `((threadId . ,thread-id))))
 
 (defun codex-ide--list-models (&optional session)
   "List available models using SESSION."

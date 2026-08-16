@@ -42,6 +42,10 @@
   "Show the Codex status buffer for the current project." t)
 (autoload 'codex-ide-status-global "codex-ide-status-mode"
   "Show the Codex status buffer across all projects." t)
+(autoload 'codex-ide-status-archived "codex-ide-status-mode"
+  "Show archived Codex threads for the current project." t)
+(autoload 'codex-ide-status-archived-global "codex-ide-status-mode"
+  "Show archived Codex threads across all projects." t)
 (autoload 'codex-ide-session-diff-open "codex-ide-diff-view"
   "Open or reuse the canonical session diff buffer for the current project." t)
 
@@ -172,7 +176,7 @@
 					  'face
 					  'transient-inactive-value)))
 			 (interactive)
-			   (let* ((available (codex-ide--config-menu-available-scopes))
+			 (let* ((available (codex-ide--config-menu-available-scopes))
 				(current (codex-ide--config-menu-scope))
 				(rest (cdr (memq current available))))
 			   (setq codex-ide-agent-config-menu-scope
@@ -469,6 +473,8 @@
 			  ["Manage"
 			   ("m" "Manage sessions" codex-ide-status)
 			   ("a" "Manage all sessions" codex-ide-status-global)
+			   ("x" "Archived sessions" codex-ide-status-archived)
+			   ("X" "Archived sessions (all)" codex-ide-status-archived-global)
 			   ("R" "Resume from all projects" codex-ide-resume-global)
 			   ("l" "Live session buffers" codex-ide-session-buffer-list)
 			   ("D" "Session diff (live/transcript/pinned)" codex-ide-session-diff-open)]

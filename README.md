@@ -124,6 +124,19 @@ sessions” and “Resume from all projects”.  Thread lists automatically retr
 all app-server pages.  Resume errors, including an active-writer conflict, are
 reported without taking over or bypassing the existing writer.
 
+### Archived sessions
+
+`M-x codex-ide-status-archived` shows archived threads for the current project;
+`M-x codex-ide-status-archived-global` shows the archived inventory across all
+projects.  Both are available from `codex-ide-menu`.  In an active or archived
+status buffer, press `A` to archive or unarchive the thread at point.  Archived
+threads must be unarchived before they can be resumed.
+
+For integrations, `codex-ide-list-thread-rows` accepts `:archived t`, normalized
+rows expose `:archived`, and `codex-ide-archive-thread` plus
+`codex-ide-unarchive-thread` provide programmatic operations.  Archiving changes
+Codex inventory visibility only; it does not imply any project-management state.
+
 ### Status extension API
 
 Optional integrations can extend the status view without depending on its
@@ -132,8 +145,11 @@ internal section representation:
 - `codex-ide-list-thread-rows` returns normalized plists with thread ID, title,
   directory, timestamps, technical status, raw thread metadata, and any linked
   live session.
-- `codex-ide-status-annotation-functions` adds display-only text to status
-  headings.  Each function receives one normalized row.
+- `codex-ide-status-before-title-functions` and
+  `codex-ide-status-after-title-functions` add display-only text around the
+  title.  Each function receives one normalized row.  The older
+  `codex-ide-status-annotation-functions` remains supported as an after-title
+  provider.
 - `codex-ide-register-status-action` adds a contextual action.  In a status
   buffer, press `a` to select an action available for the row at point.
 - `codex-ide-status-notify-annotations-changed` refreshes live status buffers

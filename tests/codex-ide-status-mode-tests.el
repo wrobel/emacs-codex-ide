@@ -257,11 +257,11 @@
 				    (let ((default-directory query-dir))
 				      (setq query-session (codex-ide--create-process-session)))
 				    (cl-letf (((symbol-function 'codex-ide--prepare-session-operations)
-				       (lambda () nil))
-				      ((symbol-function 'codex-ide--ensure-query-session-for-thread-selection)
-				       (lambda (_directory) query-session))
-				      ((symbol-function 'codex-ide--global-thread-list-data)
-				       (lambda (&optional _session _omit-thread-id) threads)))
+					       (lambda () nil))
+					      ((symbol-function 'codex-ide--ensure-query-session-for-thread-selection)
+					       (lambda (_directory) query-session))
+					      ((symbol-function 'codex-ide--global-thread-list-data)
+					       (lambda (&optional _session _omit-thread-id) threads)))
 				      (let ((default-directory query-dir))
 					(codex-ide-status-global))
 				      (with-current-buffer "codex-ide: all projects"
@@ -1216,6 +1216,10 @@
   (should (eq (lookup-key codex-ide-status-mode-map (kbd "a"))
               #'codex-ide-status-run-action)))
 
+(ert-deftest codex-ide-status-mode-binds-archive-toggle-command ()
+  (should (eq (lookup-key codex-ide-status-mode-map (kbd "A"))
+              #'codex-ide-status-toggle-archive-at-point)))
+
 (ert-deftest codex-ide-status-run-action-passes-normalized-row ()
   (let ((row '(:thread-id "thread-action"))
         (received nil)
@@ -1252,6 +1256,76 @@
          "/tmp/query"
          '(:status-width 6 :updated-width 4)))
       (should (string-match-p "Annotated task  WIP" (buffer-string))))))
+
+(ert-deftest codex-ide-status-thread-heading-renders-before-and-after-title ()
+  (with-temp-buffer
+    (codex-ide-status-mode)
+    (let* ((thread '((id . "thread-title-slots")
+                     (name . "Build dashboard")
+                     (createdAt . 10)
+                     (updatedAt . 20)))
+           (codex-ide-status-before-title-functions
+            (list (lambda (_row) "WIP")))
+           (codex-ide-status-after-title-functions
+            (list (lambda (_row) "backend"))))
+      (cl-letf (((symbol-function 'codex-ide-status-mode--thread-session)
+                 (lambda (&rest _args) nil))
+                ((symbol-function 'codex-ide--session-for-thread-id)
+                 (lambda (&rest _args) nil)))
+        (codex-ide-status-mode--insert-thread-section
+         thread "/tmp/query" '(:status-width 6 :updated-width 4)))
+      (should (string-match-p "WIP  Build dashboard  backend"
+                              (buffer-string))))))
+
+(ert-deftest codex-ide-status-archived-renders-archived-project-inventory ()
+  (let* ((root-dir (codex-ide-test--make-temp-project))
+         (project-dir (expand-file-name "archive" root-dir))
+         (thread '((id . "archived-one")
+                   (name . "On hold work")
+                   (createdAt . 10)
+                   (updatedAt . 20))))
+    (make-directory project-dir t)
+    (codex-ide-test-with-fixture root-dir
+				 (cl-letf (((symbol-function 'codex-ide--prepare-session-operations) #'ignore)
+					   ((symbol-function 'codex-ide--ensure-query-session-for-thread-selection)
+					    (lambda (_directory) 'query-session))
+					   ((symbol-function 'codex-ide--thread-list-data)
+					    (lambda (_session _omit-thread-id &key archived)
+					      (should archived)
+					      (list thread)))
+					   ((symbol-function 'codex-ide--session-for-thread-id)
+					    (lambda (&rest _args) nil)))
+				   (let ((default-directory project-dir))
+				     (codex-ide-status-archived))
+				   (with-current-buffer (format "codex-ide archived: %s"
+								(codex-ide--project-name project-dir))
+				     (should codex-ide-status-mode--archived-p)
+				     (should (string-match-p
+					      "Archived"
+					      (codex-ide-status-mode--header-line project-dir 1)))
+				     (should (string-match-p "On hold work" (buffer-string))))))))
+
+(ert-deftest codex-ide-status-toggle-archive-uses-row-archive-state ()
+  (let (calls)
+    (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _args) t))
+              ((symbol-function 'codex-ide-status-row-at-point)
+               (lambda () '(:kind thread :thread-id "thread-a"
+				  :directory "/tmp/a" :archived nil)))
+              ((symbol-function 'codex-ide-archive-thread)
+               (lambda (thread-id &rest args)
+                 (push (list 'archive thread-id args) calls))))
+      (codex-ide-status-toggle-archive-at-point))
+    (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _args) t))
+              ((symbol-function 'codex-ide-status-row-at-point)
+               (lambda () '(:kind thread :thread-id "thread-b"
+				  :directory "/tmp/b" :archived t)))
+              ((symbol-function 'codex-ide-unarchive-thread)
+               (lambda (thread-id &rest args)
+                 (push (list 'unarchive thread-id args) calls))))
+      (codex-ide-status-toggle-archive-at-point))
+    (should (equal (nreverse calls)
+                   '((archive "thread-a" (:directory "/tmp/a"))
+                     (unarchive "thread-b" (:directory "/tmp/b")))))))
 
 (ert-deftest codex-ide-status-notify-annotations-refreshes-live-status-buffers ()
   (let* ((buffer (generate-new-buffer " *codex-status-api-refresh*"))
