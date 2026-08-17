@@ -10,6 +10,61 @@
 (require 'codex-ide-test-fixtures)
 (require 'codex-ide)
 
+(ert-deftest codex-ide-thread-rollout-path-finds-active-and-archived-storage ()
+  (let* ((codex-home (make-temp-file "codex-ide-delete-storage-" t))
+         (active-directory (expand-file-name "sessions/2026/08/17" codex-home))
+         (archive-directory (expand-file-name "archived_sessions" codex-home))
+         (active-id "thread-active-storage")
+         (archived-id "thread-archived-storage")
+         (active-file (expand-file-name
+                       (format "rollout-active-%s.jsonl" active-id)
+                       active-directory))
+         (archived-file (expand-file-name
+                         (format "rollout-archived-%s.jsonl" archived-id)
+                         archive-directory))
+         (process-environment (copy-sequence process-environment)))
+    (unwind-protect
+        (progn
+          (make-directory active-directory t)
+          (make-directory archive-directory t)
+          (with-temp-file active-file)
+          (with-temp-file archived-file)
+          (setenv "CODEX_HOME" codex-home)
+          (should (equal (codex-ide--thread-rollout-path active-id) active-file))
+          (should (equal (codex-ide--thread-rollout-path archived-id) archived-file)))
+      (delete-directory codex-home t))))
+
+(ert-deftest codex-ide-delete-thread-storage-allows-archived-rollout ()
+  (let* ((codex-home (make-temp-file "codex-ide-delete-archive-" t))
+         (archive-directory (expand-file-name "archived_sessions" codex-home))
+         (archived-file (expand-file-name
+                         "rollout-archived-thread.jsonl"
+                         archive-directory))
+         (process-environment (copy-sequence process-environment)))
+    (unwind-protect
+        (progn
+          (make-directory archive-directory t)
+          (with-temp-file archived-file)
+          (setenv "CODEX_HOME" codex-home)
+          (codex-ide--delete-thread-storage archived-file)
+          (should-not (file-exists-p archived-file))
+          (should (file-directory-p archive-directory)))
+      (delete-directory codex-home t))))
+
+(ert-deftest codex-ide-delete-thread-storage-rejects-unrelated-file ()
+  (let* ((codex-home (make-temp-file "codex-ide-delete-home-" t))
+         (outside-directory (make-temp-file "codex-ide-delete-outside-" t))
+         (outside-file (expand-file-name "rollout-outside.jsonl" outside-directory))
+         (process-environment (copy-sequence process-environment)))
+    (unwind-protect
+        (progn
+          (with-temp-file outside-file)
+          (setenv "CODEX_HOME" codex-home)
+          (should-error (codex-ide--delete-thread-storage outside-file))
+          (should (file-exists-p outside-file)))
+      (delete-directory codex-home t)
+      (delete-directory outside-directory t))))
+
 (ert-deftest codex-ide-delete-session-thread-deletes-live-session-and-storage ()
   (let ((project-dir (codex-ide-test--make-temp-project))
         (deleted-session nil)

@@ -130,7 +130,9 @@ reported without taking over or bypassing the existing writer.
 `M-x codex-ide-status-archived-global` shows the archived inventory across all
 projects.  Both are available from `codex-ide-menu`.  In an active or archived
 status buffer, press `A` to archive or unarchive the thread at point.  Archived
-threads must be unarchived before they can be resumed.
+threads must be unarchived before they can be resumed.  Press `D` in either an
+active or archived status buffer to permanently delete the thread after the
+full confirmation prompt.
 
 For integrations, `codex-ide-list-thread-rows` accepts `:archived t`, normalized
 rows expose `:archived`, and `codex-ide-archive-thread` plus

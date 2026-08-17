@@ -36,17 +36,38 @@
   "Return the active Codex sessions directory."
   (expand-file-name "sessions" (codex-ide--codex-home)))
 
-(defun codex-ide--thread-rollout-path (thread-id)
-  "Return the rollout file path for THREAD-ID, or nil when not found."
-  (let* ((sessions-directory (codex-ide--codex-sessions-directory))
-         (pattern (format "rollout-.*-%s\\.jsonl\\'" (regexp-quote thread-id))))
-    (when (file-directory-p sessions-directory)
-      (car (directory-files-recursively sessions-directory pattern nil t)))))
+(defun codex-ide--codex-archived-sessions-directory ()
+  "Return the archived Codex sessions directory."
+  (expand-file-name "archived_sessions" (codex-ide--codex-home)))
 
-(defun codex-ide--delete-empty-session-directories (path)
-  "Delete empty parent directories for PATH inside the Codex sessions root."
-  (let ((sessions-root (file-name-as-directory
-                        (expand-file-name (codex-ide--codex-sessions-directory))))
+(defun codex-ide--codex-session-storage-directories ()
+  "Return active and archived Codex session storage directories."
+  (list (codex-ide--codex-sessions-directory)
+        (codex-ide--codex-archived-sessions-directory)))
+
+(defun codex-ide--thread-rollout-path (thread-id)
+  "Return the active or archived rollout path for THREAD-ID, or nil."
+  (let ((pattern (format "rollout-.*-%s\\.jsonl\\'"
+                         (regexp-quote thread-id))))
+    (seq-some
+     (lambda (directory)
+       (when (file-directory-p directory)
+         (car (directory-files-recursively directory pattern nil t))))
+     (codex-ide--codex-session-storage-directories))))
+
+(defun codex-ide--thread-storage-root-for-path (path)
+  "Return the allowed Codex session storage root containing PATH."
+  (let ((expanded-path (expand-file-name path)))
+    (seq-find
+     (lambda (directory)
+       (file-in-directory-p
+        expanded-path
+        (file-name-as-directory (expand-file-name directory))))
+     (codex-ide--codex-session-storage-directories))))
+
+(defun codex-ide--delete-empty-session-directories (path storage-root)
+  "Delete empty parents for PATH below Codex session STORAGE-ROOT."
+  (let ((sessions-root (file-name-as-directory (expand-file-name storage-root)))
         (directory (file-name-directory (expand-file-name path))))
     (while (and directory
                 (file-in-directory-p directory sessions-root)
@@ -57,18 +78,16 @@
 
 (defun codex-ide--delete-thread-storage (rollout-path)
   "Delete stored Codex rollout file at ROLLOUT-PATH."
-  (let* ((sessions-root (file-name-as-directory
-                         (expand-file-name (codex-ide--codex-sessions-directory))))
-         (rollout-file (expand-file-name rollout-path)))
-    (unless (file-in-directory-p rollout-file sessions-root)
-      (error "Refusing to delete rollout outside %s: %s"
-             (abbreviate-file-name sessions-root)
+  (let* ((rollout-file (expand-file-name rollout-path))
+         (storage-root (codex-ide--thread-storage-root-for-path rollout-file)))
+    (unless storage-root
+      (error "Refusing to delete rollout outside Codex session storage: %s"
              (abbreviate-file-name rollout-file)))
     (unless (file-exists-p rollout-file)
       (user-error "Stored Codex rollout file no longer exists: %s"
                   (abbreviate-file-name rollout-file)))
     (delete-file rollout-file)
-    (codex-ide--delete-empty-session-directories rollout-file)))
+    (codex-ide--delete-empty-session-directories rollout-file storage-root)))
 
 (defun codex-ide--delete-live-thread-session (session)
   "Tear down SESSION so its thread can be deleted from storage."
@@ -95,11 +114,11 @@
   "Delete Codex THREAD-ID from the active `CODEX_HOME`.
 
 This command relies on current Codex internal storage details under
-`CODEX_HOME`, specifically the persisted rollout files under the sessions
-directory.  That makes it more fragile than the rest of codex-ide, which
-primarily uses the public app-server API.  If Codex adds an officially
-supported thread deletion API, this implementation should be replaced to use
-that instead.
+`CODEX_HOME`, specifically the persisted rollout files under the active and
+archived session directories.  That makes it more fragile than the rest of
+codex-ide, which primarily uses the public app-server API.  If Codex adds an
+officially supported thread deletion API, this implementation should be
+replaced to use that instead.
 
 If a live session buffer is attached to THREAD-ID, prompt before tearing down
 that session and then remove the persisted thread data from disk.
